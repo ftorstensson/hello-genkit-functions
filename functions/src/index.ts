@@ -13,7 +13,7 @@ import {onCallGenkit} from "firebase-functions/v2/https";
 // Initialize Genkit with the Vertex AI plugin.
 const ai = genkit({
   plugins: [
-    vertexAI({location: "us-central1"}),
+    vertexAI({location: "australia-southeast1"}),
   ],
 });
 
@@ -33,4 +33,4 @@ export const helloFlow = ai.defineFlow(
 
 // Expose the 'helloFlow' to the internet using the 'onCallGenkit' trigger.
 // This single line replaces the entire custom Express server.
-export const hello = onCallGenkit(helloFlow);
+export const hello = onCallGenkit({ region: "australia-southeast1" }, helloFlow);
