@@ -33,4 +33,4 @@ export const helloFlow = ai.defineFlow(
 
 // Expose the 'helloFlow' to the internet using the 'onCallGenkit' trigger.
 // This single line replaces the entire custom Express server.
-export const hello = onCallGenkit({ region: "australia-southeast1" }, helloFlow);
+export const hello = onCallGenkit({region: "australia-southeast1"}, helloFlow);
