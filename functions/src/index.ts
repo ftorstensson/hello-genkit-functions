@@ -4,7 +4,7 @@
  */
 
 import {genkit, z} from "genkit";
-import {vertexAI, gemini20Flash} from "@genkit-ai/vertexai";
+import {vertexAI, gemini15Flash} from "@genkit-ai/vertexai";
 import {onCallGenkit} from "firebase-functions/v2/https";
 
 // Initialize Genkit with the Vertex AI plugin in the correct region.
@@ -65,7 +65,7 @@ export const taskClassifierFlow = ai.defineFlow(
 
     const llmResponse = await ai.generate({
       prompt,
-      model: gemini20Flash,
+      model: gemini15Flash,
       output: {
         schema: TaskClassificationSchema,
       },
