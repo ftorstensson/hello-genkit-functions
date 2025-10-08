@@ -1,17 +1,16 @@
 /*
- * Vibe Coder AI Engine - v1.5 (Task Classifier - Prompt Refined)
- * This version refines the LLM prompt with few-shot examples to ensure
- * it reliably returns a valid classification string, not null.
+ * Vibe Coder AI Engine - v1.6 (Task Classifier - Fully Linted)
+ * This version is meticulously formatted to pass all ESLint checks.
  */
 
-import { genkit, z } from "genkit";
-import { vertexAI, gemini15Flash } from "@genkit-ai/vertexai";
-import { onCallGenkit } from "firebase-functions/v2/https";
+import {genkit, z} from "genkit";
+import {vertexAI, gemini15Flash} from "@genkit-ai/vertexai";
+import {onCallGenkit} from "firebase-functions/v2/https";
 
 // Initialize Genkit with the Vertex AI plugin in the correct region.
 const ai = genkit({
   plugins: [
-    vertexAI({ location: "australia-southeast1" }),
+    vertexAI({location: "australia-southeast1"}),
   ],
 });
 
@@ -88,6 +87,6 @@ export const taskClassifierFlow = ai.defineFlow(
 
 // Expose the 'taskClassifierFlow' as a callable cloud function.
 export const taskClassifier = onCallGenkit(
-  { region: "australia-southeast1" },
+  {region: "australia-southeast1"},
   taskClassifierFlow
 );
