@@ -1,16 +1,17 @@
 /*
- * Vibe Coder AI Engine - v1.4 (Task Classifier - Super Linted)
- * This version is meticulously formatted to pass all ESLint checks.
+ * Vibe Coder AI Engine - v1.5 (Task Classifier - Prompt Refined)
+ * This version refines the LLM prompt with few-shot examples to ensure
+ * it reliably returns a valid classification string, not null.
  */
 
-import {genkit, z} from "genkit";
-import {vertexAI, gemini15Flash} from "@genkit-ai/vertexai";
-import {onCallGenkit} from "firebase-functions/v2/https";
+import { genkit, z } from "genkit";
+import { vertexAI, gemini15Flash } from "@genkit-ai/vertexai";
+import { onCallGenkit } from "firebase-functions/v2/https";
 
 // Initialize Genkit with the Vertex AI plugin in the correct region.
 const ai = genkit({
   plugins: [
-    vertexAI({location: "australia-southeast1"}),
+    vertexAI({ location: "australia-southeast1" }),
   ],
 });
 
@@ -36,25 +37,24 @@ export const taskClassifierFlow = ai.defineFlow(
       userMessage
     );
 
+    // REFINED PROMPT with few-shot examples and stricter instructions.
     const prompt = `
-      You are the expert classification agent for a multi-agent AI system.
-      Your sole function is to analyze a user's message and classify its
-      intent into one of the following exact categories:
+      You are an expert classification agent. Your only job is to classify a
+      user's message into one of three categories: "task_request", "chitchat",
+      or "clarification". Respond with only the single, exact category name.
 
-      - "task_request": The user is asking to start a new project, build
-        something, perform a task, or giving a direct command.
-        Examples: "build me a new app", "can you create a login page?".
+      Here are examples:
 
-      - "chitchat": The user is making small talk, giving a greeting,
-        expressing gratitude, or having a general, non-task-oriented
-        conversation. Examples: "hello", "thank you", "how are you?".
+      USER MESSAGE: "hello there"
+      CLASSIFICATION: "chitchat"
 
-      - "clarification": The user is asking a question about a previously
-        provided plan, seeking more details about a process, or asking
-        about your capabilities. Examples: "what do you mean by that?".
+      USER MESSAGE: "can you build me a website?"
+      CLASSIFICATION: "task_request"
 
-      Analyze the following user message. Respond with ONLY one of the
-      classification categories and nothing else.
+      USER MESSAGE: "what do you mean by 'bedrock'?"
+      CLASSIFICATION: "clarification"
+
+      Now, classify the following message.
 
       USER MESSAGE:
       """
@@ -88,6 +88,6 @@ export const taskClassifierFlow = ai.defineFlow(
 
 // Expose the 'taskClassifierFlow' as a callable cloud function.
 export const taskClassifier = onCallGenkit(
-  {region: "australia-southeast1"},
+  { region: "australia-southeast1" },
   taskClassifierFlow
 );
