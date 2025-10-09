@@ -1,17 +1,16 @@
 /*
- * Vibe Coder AI Engine - v1.8 (Task Classifier - Diagnostic Corrected)
- * This version corrects the syntax for accessing the raw text output from
- * the LLM response. The code is now complete and correct.
+ * Vibe Coder AI Engine - v1.9 (Task Classifier - Super Linted Diagnostic)
+ * This version is meticulously formatted to pass all ESLint checks.
  */
 
-import { genkit, z } from "genkit";
-import { vertexAI, gemini15Flash } from "@genkit-ai/vertexai";
-import { onCallGenkit } from "firebase-functions/v2/https";
+import {genkit, z} from "genkit";
+import {vertexAI, gemini15Flash} from "@genkit-ai/vertexai";
+import {onCallGenkit} from "firebase-functions/v2/https";
 
 // Initialize Genkit with the Vertex AI plugin in the correct region.
 const ai = genkit({
   plugins: [
-    vertexAI({ location: "australia-southeast1" }),
+    vertexAI({location: "australia-southeast1"}),
   ],
 });
 
@@ -73,12 +72,16 @@ export const taskClassifierFlow = ai.defineFlow(
 
     // CORRECTED: Access 'text' as a property, not a function.
     const rawOutput = llmResponse.text;
-    console.log(`[taskClassifierFlow] Received RAW output from model: "${rawOutput}"`);
+    console.log(
+      `[taskClassifierFlow] Received RAW output from model: "${rawOutput}"`
+    );
 
     // DIAGNOSTIC STEP 2: Manually validate the raw output.
     try {
       // We use .trim() to remove any accidental leading/trailing whitespace.
-      const validatedClassification = TaskClassificationSchema.parse(rawOutput.trim());
+      const validatedClassification = TaskClassificationSchema.parse(
+        rawOutput.trim()
+      );
       console.log("[taskClassifierFlow] Manual validation successful.");
       return validatedClassification;
     } catch (e) {
@@ -92,6 +95,6 @@ export const taskClassifierFlow = ai.defineFlow(
 
 // Expose the 'taskClassifierFlow' as a callable cloud function.
 export const taskClassifier = onCallGenkit(
-  { region: "australia-southeast1" },
+  {region: "australia-southeast1"},
   taskClassifierFlow
 );
