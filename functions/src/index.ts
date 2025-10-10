@@ -1,6 +1,6 @@
 /*
- * Vibe Coder AI Engine - v2.3 (Architect Agent - Readable & Lint-Passing)
- * This version uses the evolved ESLint rules for improved readability.
+ * Vibe Coder AI Engine - v2.4 (Architect Agent - Fully Linted & Robust)
+ * This version is fully linted and includes the JSON cleaning logic.
  */
 
 import {genkit, z} from "genkit";
@@ -27,7 +27,9 @@ const TaskClassificationSchema = z.enum([
 export const taskClassifierFlow = ai.defineFlow(
   {
     name: "taskClassifierFlow",
-    inputSchema: z.string().describe("The user's raw message to be classified."),
+    inputSchema: z.string().describe(
+      "The user's raw message to be classified."
+    ),
     outputSchema: TaskClassificationSchema,
   },
   async (userMessage) => {
@@ -54,7 +56,9 @@ export const taskClassifierFlow = ai.defineFlow(
       config: {temperature: 0},
     });
     const rawOutput = llmResponse.text;
-    const validatedClassification = TaskClassificationSchema.parse(rawOutput.trim());
+    const validatedClassification = TaskClassificationSchema.parse(
+      rawOutput.trim()
+    );
     return validatedClassification;
   }
 );
@@ -69,9 +73,21 @@ export const taskClassifier = onCallGenkit(
 // ===============================================================================
 
 const PlanSchema = z.object({
-  title: z.string().describe("A short, descriptive title for the overall plan."),
+  title: z.string().describe(
+    "A short, descriptive title for the overall plan."
+  ),
   steps: z.array(z.string()).describe("A list of high-level steps."),
 });
+
+/**
+ * Extracts a JSON string from a Markdown code block.
+ * @param {string} text The raw text output from the model.
+ * @return {string} The cleaned JSON string.
+ */
+function extractJson(text: string): string {
+  const match = text.match(/```json\n([\s\S]*?)\n```/);
+  return match ? match[1] : text;
+}
 
 export const architectFlow = ai.defineFlow(
   {
@@ -86,38 +102,32 @@ export const architectFlow = ai.defineFlow(
       You are a world-class technical architect for the Vibe Coder Agency.
       Your sole function is to take a user's request and create a clear,
       high-level, step-by-step plan to accomplish it.
-
       Adhere to these unbreakable principles:
-      1.  **Decomposition:** Break the problem down into the smallest logical steps.
+      1.  **Decomposition:** Break the problem down into the smallest logical
+          steps.
       2.  **Clarity:** Each step should be a clear, concise action.
       3.  **JSON Only:** You must respond with ONLY a valid JSON object that
           conforms to the specified schema, and nothing else.
-
       Here is an example:
-
       USER REQUEST: "I need an API for a simple to-do list."
-
       YOUR RESPONSE:
       {
         "title": "Build a To-Do List API",
         "steps": [
-          "Define the data model for a 'Todo' item (e.g., id, text, completed).",
+          "Define the data model for a 'Todo' item.",
           "Create the main Python Flask application file.",
-          "Implement the API endpoint to create a new to-do item (POST /todos).",
-          "Implement the API endpoint to retrieve all to-do items (GET /todos).",
-          "Implement the API endpoint to update a to-do item (PUT /todos/<id>).",
-          "Implement the API endpoint to delete a to-do item (DELETE /todos/<id>).",
-          "Write a Dockerfile to containerize the application for Cloud Run."
+          "Implement the API endpoint to create a new to-do item.",
+          "Implement the API endpoint to retrieve all to-do items.",
+          "Implement the API endpoint to update a to-do item.",
+          "Implement the API endpoint to delete a to-do item.",
+          "Write a Dockerfile to containerize the application."
         ]
       }
-
       Now, generate a plan for the following user request.
-
       USER REQUEST:
       """
       ${taskRequest}
       """
-
       YOUR RESPONSE:`;
 
     const llmResponse = await ai.generate({
@@ -127,17 +137,23 @@ export const architectFlow = ai.defineFlow(
     });
 
     const rawOutput = llmResponse.text;
-    console.log(`[architectFlow] Received RAW JSON output from model: ${rawOutput}`);
+    console.log(
+      `[architectFlow] Received RAW JSON output from model: ${rawOutput}`
+    );
+
+    const cleanJsonString = extractJson(rawOutput);
 
     try {
-      const jsonOutput = JSON.parse(rawOutput);
+      const jsonOutput = JSON.parse(cleanJsonString);
       const validatedPlan = PlanSchema.parse(jsonOutput);
       console.log("[architectFlow] Manual validation successful.");
       return validatedPlan;
     } catch (e) {
-      console.error("[architectFlow] Manual JSON parsing or validation FAILED.", e);
+      console.error(
+        "[architectFlow] Manual JSON parsing or validation FAILED.", e
+      );
       throw new Error(
-        `Architect failed. Model produced invalid JSON output: "${rawOutput}"`
+        `Architect failed. Model produced invalid JSON: "${cleanJsonString}"`
       );
     }
   }
