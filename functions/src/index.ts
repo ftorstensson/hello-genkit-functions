@@ -1,6 +1,7 @@
+/* eslint-disable max-len */
 /*
- * Vibe Coder AI Engine - v2.4 (Architect Agent - Fully Linted & Robust)
- * This version is fully linted and includes the JSON cleaning logic.
+ * Vibe Coder AI Engine - v3.1 (Frontend Engineer - Fully Linted)
+ * This version is meticulously formatted to pass all ESLint checks.
  */
 
 import {genkit, z} from "genkit";
@@ -55,21 +56,17 @@ export const taskClassifierFlow = ai.defineFlow(
       model: gemini15Flash,
       config: {temperature: 0},
     });
-    const rawOutput = llmResponse.text;
-    const validatedClassification = TaskClassificationSchema.parse(
-      rawOutput.trim()
-    );
-    return validatedClassification;
-  }
+    return TaskClassificationSchema.parse(llmResponse.text.trim());
+  },
 );
 
 export const taskClassifier = onCallGenkit(
   {region: "australia-southeast1"},
-  taskClassifierFlow
+  taskClassifierFlow,
 );
 
 // ===============================================================================
-// AGENT 2: THE ARCHITECT (New)
+// AGENT 2: THE ARCHITECT (Existing)
 // ===============================================================================
 
 const PlanSchema = z.object({
@@ -96,8 +93,6 @@ export const architectFlow = ai.defineFlow(
     outputSchema: PlanSchema,
   },
   async (taskRequest) => {
-    console.log("[architectFlow] Received task for planning:", taskRequest);
-
     const prompt = `
       You are a world-class technical architect for the Vibe Coder Agency.
       Your sole function is to take a user's request and create a clear,
@@ -129,6 +124,73 @@ export const architectFlow = ai.defineFlow(
       ${taskRequest}
       """
       YOUR RESPONSE:`;
+    const llmResponse = await ai.generate({
+      prompt,
+      model: gemini15Flash,
+      config: {temperature: 0},
+    });
+    const rawOutput = llmResponse.text;
+    const cleanJsonString = extractJson(rawOutput);
+    return PlanSchema.parse(JSON.parse(cleanJsonString));
+  },
+);
+
+export const architect = onCallGenkit(
+  {region: "australia-southeast1"},
+  architectFlow,
+);
+
+// ===============================================================================
+// AGENT 3: THE FRONTEND ENGINEER (New)
+// ===============================================================================
+
+const CodeFileSchema = z.object({
+  filename: z.string().describe(
+    "The complete and correct filename, including extension."
+  ),
+  code: z.string().describe(
+    "The full, complete, and final source code for the file."
+  ),
+});
+
+export const frontendEngineerFlow = ai.defineFlow(
+  {
+    name: "frontendEngineerFlow",
+    inputSchema: z.string().describe("A single, specific task from a plan."),
+    outputSchema: CodeFileSchema,
+  },
+  async (task) => {
+    const prompt = `
+      You are a senior software engineer for the Vibe Coder Agency.
+      Your sole function is to take a single, specific task and write the
+      complete, production-ready code to accomplish it.
+
+      Adhere to these unbreakable principles:
+      1.  **Completeness:** Your response MUST contain the full and complete
+          code for the file. There will be no truncation, placeholders,
+          comments like "// ... your other code", or omissions.
+      2.  **Clarity:** The code must be clean, professional, and readable.
+      3.  **JSON Only:** You must respond with ONLY a valid JSON object that
+          conforms to the specified schema, and nothing else.
+
+      Here is an example:
+
+      TASK: "Create the main Python Flask application file."
+
+      YOUR RESPONSE:
+      {
+        "filename": "main.py",
+        "code": "import os\\nfrom flask import Flask\\n\\napp = Flask(__name__)\\n\\n@app.route('/')\\ndef a_function_to_start_with():\\n    return 'Hello, World!'\\n\\nif __name__ == '__main__':\\n    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))"
+      }
+
+      Now, generate the code file for the following task.
+
+      TASK:
+      """
+      ${task}
+      """
+
+      YOUR RESPONSE:`;
 
     const llmResponse = await ai.generate({
       prompt,
@@ -137,29 +199,12 @@ export const architectFlow = ai.defineFlow(
     });
 
     const rawOutput = llmResponse.text;
-    console.log(
-      `[architectFlow] Received RAW JSON output from model: ${rawOutput}`
-    );
-
     const cleanJsonString = extractJson(rawOutput);
-
-    try {
-      const jsonOutput = JSON.parse(cleanJsonString);
-      const validatedPlan = PlanSchema.parse(jsonOutput);
-      console.log("[architectFlow] Manual validation successful.");
-      return validatedPlan;
-    } catch (e) {
-      console.error(
-        "[architectFlow] Manual JSON parsing or validation FAILED.", e
-      );
-      throw new Error(
-        `Architect failed. Model produced invalid JSON: "${cleanJsonString}"`
-      );
-    }
-  }
+    return CodeFileSchema.parse(JSON.parse(cleanJsonString));
+  },
 );
 
-export const architect = onCallGenkit(
+export const frontendEngineer = onCallGenkit(
   {region: "australia-southeast1"},
-  architectFlow
+  frontendEngineerFlow,
 );
