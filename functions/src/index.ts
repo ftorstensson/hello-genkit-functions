@@ -1,7 +1,7 @@
 /*
- * Vibe Coder AI Engine - v4.2 (Restored & Fully Linted)
- * This version restores the full, correct logic for all agents and is
- * meticulously formatted to pass all ESLint checks.
+ * Vibe Coder AI Engine - v5.0 (Unified Brain)
+ * This version implements the "Unified Brain" architecture. The projectManagerFlow
+ * is now the single, intelligent entry point for the entire service.
  */
 
 import {genkit, z} from "genkit";
@@ -14,260 +14,90 @@ const ai = genkit({
 });
 
 // ===============================================================================
-// AGENT 1: TASK CLASSIFIER
+// DATA SCHEMAS
 // ===============================================================================
 
-const TaskClassificationSchema = z.enum([
-  "task_request",
-  "chitchat",
-  "clarification",
+// Defines a single message in the conversation history.
+const MessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+});
+
+// Defines the full conversation history.
+const HistorySchema = z.array(MessageSchema);
+
+// Defines the possible "decisions" our brain can make.
+const DecisionSchema = z.union([
+  z.object({
+    action: z.literal("reply_to_user"),
+    text: z.string().describe("The natural language response to the user."),
+  }),
+  z.object({
+    action: z.literal("call_architect"),
+    task: z.string().describe("The user's task to be sent to the architect."),
+  }),
+  z.object({
+    action: z.literal("call_engineer"),
+    task: z.string().describe("The specific step from the plan to be executed."),
+  }),
 ]);
 
-export const taskClassifierFlow = ai.defineFlow(
-  {
-    name: "taskClassifierFlow",
-    inputSchema: z.string()
-      .describe("The user's raw message to be classified."),
-    outputSchema: TaskClassificationSchema,
-  },
-  async (userMessage) => {
-    const prompt = `
-      You are an expert classification agent. Your only job is to classify a
-      user's message into one of three categories: "task_request", "chitchat",
-      or "clarification". Respond with only the single, exact category name.
-      Here are examples:
-      USER MESSAGE: "hello there"
-      CLASSIFICATION: "chitchat"
-      USER MESSAGE: "can you build me a website?"
-      CLASSIFICATION: "task_request"
-      USER MESSAGE: "what do you mean by 'bedrock'?"
-      CLASSIFICATION: "clarification"
-      Now, classify the following message.
-      USER MESSAGE:
-      """
-      ${userMessage}
-      """
-      CLASSIFICATION:`;
-    const llmResponse = await ai.generate({
-      prompt,
-      model: gemini15Flash,
-      config: {temperature: 0},
-    });
-    return TaskClassificationSchema.parse(llmResponse.text.trim());
-  },
-);
-
-export const taskClassifier = onCallGenkit(
-  {region: "australia-southeast1"},
-  taskClassifierFlow,
-);
-
 // ===============================================================================
-// AGENT 2: THE ARCHITECT
+// THE "MASTER BRAIN" AGENT
 // ===============================================================================
-
-const PlanSchema = z.object({
-  title: z.string(),
-  steps: z.array(z.string()),
-});
 
 /**
- * Extracts a JSON string from a Markdown code block.
- * @param {string} text The raw text output from the model.
- * @return {string} The cleaned JSON string.
+ * The Project Manager is the single, unified brain of the application.
+ * It analyzes the full conversation history and decides on the next action.
  */
-function extractJson(text: string): string {
-  const match = text.match(/```json\n([\s\S]*?)\n```/);
-  return match ? match[1] : text;
-}
-
-export const architectFlow = ai.defineFlow(
+export const projectManagerFlow = ai.defineFlow(
   {
-    name: "architectFlow",
-    inputSchema: z.string(),
-    outputSchema: PlanSchema,
+    name: "projectManagerFlow",
+    inputSchema: HistorySchema,
+    outputSchema: DecisionSchema,
   },
-  async (taskRequest) => {
+  async (history) => {
     const prompt = `
-      You are a world-class technical architect for the Vibe Coder Agency.
-      Your sole function is to take a user's request and create a clear,
-      high-level, step-by-step plan to accomplish it.
-      Adhere to these unbreakable principles:
-      1.  **Decomposition:** Break the problem down into the smallest logical
-          steps.
-      2.  **Clarity:** Each step should be a clear, concise action.
-      3.  **JSON Only:** You must respond with ONLY a valid JSON object that
-          conforms to the specified schema, and nothing else.
-      Here is an example:
-      USER REQUEST: "I need an API for a simple to-do list."
-      YOUR RESPONSE:
-      {
-        "title": "Build a To-Do List API",
-        "steps": [
-          "Define the data model for a 'Todo' item.",
-          "Create the main Python Flask application file.",
-          "Implement the API endpoint to create a new to-do item.",
-          "Implement the API endpoint to retrieve all to-do items.",
-          "Implement the API endpoint to update a to-do item.",
-          "Implement the API endpoint to delete a to-do item.",
-          "Write a Dockerfile to containerize the application."
-        ]
-      }
-      Now, generate a plan for the following user request.
-      USER REQUEST:
-      """
-      ${taskRequest}
-      """
-      YOUR RESPONSE:`;
-    const llmResponse = await ai.generate({
-      prompt,
-      model: gemini15Flash,
-      config: {temperature: 0},
-    });
-    const rawOutput = llmResponse.text;
-    const cleanJsonString = extractJson(rawOutput);
-    return PlanSchema.parse(JSON.parse(cleanJsonString));
-  },
-);
+      You are the Vibe Coder Project Manager, a world-class AI collaborator.
+      Your job is to analyze the entire conversation history and decide on the
+      single best next action to take.
 
-export const architect = onCallGenkit(
-  {region: "australia-southeast1"},
-  architectFlow,
-);
+      These are your possible actions:
+      1.  'reply_to_user': Use this to ask clarifying questions, brainstorm,
+          greet the user, or present information.
+      2.  'call_architect': Use this ONLY when you have a clear, confirmed
+          task from the user that needs a technical plan.
+      3.  'call_engineer': Use this ONLY when a plan has been presented and the
+          user has clearly approved it.
 
-// ===============================================================================
-// AGENT 3: THE FRONTEND ENGINEER
-// ===============================================================================
+      Analyze the conversation below. If the user's last message is a new,
+      ambiguous task, ASK A CLARIFYING QUESTION. Do not create a plan until
+      you are sure what the user wants. If the user has approved a plan,
+      call the engineer with the first step. If you just received a plan or
+      code, present it to the user.
 
-const CodeFileSchema = z.object({
-  filename: z.string(),
-  code: z.string(),
-});
+      Respond with ONLY a valid JSON object matching the required action schema.
 
-export const frontendEngineerFlow = ai.defineFlow(
-  {
-    name: "frontendEngineerFlow",
-    inputSchema: z.string(),
-    outputSchema: CodeFileSchema,
-  },
-  async (task) => {
-    const prompt = `
-      You are a senior software engineer for the Vibe Coder Agency.
-      Your sole function is to take a single, specific task and write the
-      complete, production-ready code to accomplish it.
-      Adhere to these unbreakable principles:
-      1.  **Completeness:** Your response MUST contain the full and complete
-          code for the file. There will be no truncation, placeholders,
-          comments like "// ... your other code", or omissions.
-      2.  **Clarity:** The code must be clean, professional, and readable.
-      3.  **JSON Only:** You must respond with ONLY a valid JSON object that
-          conforms to the specified schema, and nothing else.
-      Here is an example:
-      TASK: "Create the main Python Flask application file."
-      YOUR RESPONSE:
-      {
-        "filename": "main.py",
-        "code": "import os\\nfrom flask import Flask\\n\\napp = Flask(__name__)" +
-        "\\n\\n@app.route('/')\\ndef a_function_to_start_with():" +
-        "\\n    return 'Hello, World!'\\n\\nif __name__ == '__main__':" +
-        "\\n    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))"
-      }
-      Now, generate the code file for the following task.
-      TASK:
-      """
-      ${task}
-      """
-      YOUR RESPONSE:`;
-    const llmResponse = await ai.generate({
-      prompt,
-      model: gemini15Flash,
-      config: {temperature: 0},
-    });
-    const rawOutput = llmResponse.text;
-    const cleanJsonString = extractJson(rawOutput);
-    return CodeFileSchema.parse(JSON.parse(cleanJsonString));
-  },
-);
+      CONVERSATION HISTORY:
+      ${JSON.stringify(history, null, 2)}
 
-export const frontendEngineer = onCallGenkit(
-  {region: "australia-southeast1"},
-  frontendEngineerFlow,
-);
-
-// ===============================================================================
-// AGENT 4: THE PERSONALITY
-// ===============================================================================
-
-const PersonalityContextSchema = z.object({
-  context: z.enum([
-    "triage_chitchat",
-    "triage_clarification",
-    "plan_generated",
-    "plan_approved",
-    "execution_complete",
-  ]),
-  data: z.any().optional(),
-});
-
-/**
- * Generates natural, non-robotic language for the Project Manager.
- */
-export const personalityFlow = ai.defineFlow(
-  {
-    name: "personalityFlow",
-    inputSchema: PersonalityContextSchema,
-    outputSchema: z.string(),
-  },
-  async ({context, data}) => {
-    let prompt = `
-      You are the personality and voice of the Vibe Coder Project Manager.
-      Your tone is professional, clear, and collaborative. You are a partner,
-      not just a tool. Generate a short, natural language response for the
-      following conversational context.
-    `;
-
-    switch (context) {
-    case "triage_chitchat":
-      prompt += `
-          Context: The user just said something conversational (e.g., "hello").
-          Task: Respond with a friendly, professional greeting and ask how you
-          can help them with a software project.`;
-      break;
-    case "plan_generated":
-      prompt += `
-          Context: You have just generated a new project plan for the user.
-          Task: Present the plan to the user. Briefly introduce it and ask
-          them to review it for approval. Let them know they need to say
-          "yes" to proceed. The plan data is attached: ${JSON.stringify(data)}`;
-      break;
-    case "plan_approved":
-      prompt += `
-          Context: The user has just approved the plan you presented.
-          Task: Acknowledge their approval enthusiastically. State that you
-          are now proceeding to the execution phase.`;
-      break;
-    case "execution_complete":
-      prompt += `
-          Context: The engineering agent has just completed a step and
-          generated a code file.
-          Task: Announce that the first step of the plan is complete.
-          Introduce the code file that has been generated.`;
-      break;
-    default:
-      return "I'm not sure how to respond to that.";
-    }
+      YOUR NEXT ACTION:`;
 
     const llmResponse = await ai.generate({
       prompt,
       model: gemini15Flash,
-      config: {temperature: 0.5},
+      output: {
+        schema: DecisionSchema,
+      },
+      config: {temperature: 0.2},
     });
 
-    return llmResponse.text;
-  },
+    return llmResponse.output;
+  }
 );
 
-export const personality = onCallGenkit(
+// This is now the ONLY function exposed to the outside world.
+export const projectManager = onCallGenkit(
   {region: "australia-southeast1"},
-  personalityFlow,
+  projectManagerFlow
 );
