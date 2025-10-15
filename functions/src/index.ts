@@ -1,7 +1,7 @@
 /*
- * Vibe Coder AI Engine - v5.0 (Unified Brain)
- * This version implements the "Unified Brain" architecture. The projectManagerFlow
- * is now the single, intelligent entry point for the entire service.
+ * Vibe Coder AI Engine - v5.1 (Unified Brain - Robust)
+ * This version adds a null check to the projectManagerFlow to prevent a
+ * critical type error, making the agent's brain more robust.
  */
 
 import {genkit, z} from "genkit";
@@ -17,16 +17,13 @@ const ai = genkit({
 // DATA SCHEMAS
 // ===============================================================================
 
-// Defines a single message in the conversation history.
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
 });
 
-// Defines the full conversation history.
 const HistorySchema = z.array(MessageSchema);
 
-// Defines the possible "decisions" our brain can make.
 const DecisionSchema = z.union([
   z.object({
     action: z.literal("reply_to_user"),
@@ -46,10 +43,6 @@ const DecisionSchema = z.union([
 // THE "MASTER BRAIN" AGENT
 // ===============================================================================
 
-/**
- * The Project Manager is the single, unified brain of the application.
- * It analyzes the full conversation history and decides on the next action.
- */
 export const projectManagerFlow = ai.defineFlow(
   {
     name: "projectManagerFlow",
@@ -92,11 +85,15 @@ export const projectManagerFlow = ai.defineFlow(
       config: {temperature: 0.2},
     });
 
-    return llmResponse.output;
+    // CRITICAL FIX: Check for a null output before returning.
+    const decision = llmResponse.output;
+    if (!decision) {
+      throw new Error("The Project Manager brain failed to make a decision.");
+    }
+    return decision;
   }
 );
 
-// This is now the ONLY function exposed to the outside world.
 export const projectManager = onCallGenkit(
   {region: "australia-southeast1"},
   projectManagerFlow
