@@ -1,7 +1,7 @@
 /*
- * Vibe Coder AI Engine - v5.1 (Unified Brain - Robust)
- * This version adds a null check to the projectManagerFlow to prevent a
- * critical type error, making the agent's brain more robust.
+ * Vibe Coder AI Engine - v5.2 (Unified Brain - z.enum fix)
+ * This version implements the expert-validated fix for the structured output
+ * bug by refactoring the DecisionSchema to use z.enum instead of z.literal.
  */
 
 import {genkit, z} from "genkit";
@@ -24,20 +24,22 @@ const MessageSchema = z.object({
 
 const HistorySchema = z.array(MessageSchema);
 
-const DecisionSchema = z.union([
-  z.object({
-    action: z.literal("reply_to_user"),
-    text: z.string().describe("The natural language response to the user."),
-  }),
-  z.object({
-    action: z.literal("call_architect"),
-    task: z.string().describe("The user's task to be sent to the architect."),
-  }),
-  z.object({
-    action: z.literal("call_engineer"),
-    task: z.string().describe("The specific step from the plan to be executed."),
-  }),
-]);
+// REFACTORED SCHEMA using z.enum, as recommended by the expert.
+const DecisionSchema = z.object({
+  action: z.enum([
+    "reply_to_user",
+    "call_architect",
+    "call_engineer",
+  ]),
+  text: z.string().describe(
+    "For 'reply_to_user', the text to say. For other actions, a brief " +
+    "summary of the action being taken."
+  ),
+  task: z.string().optional().describe(
+    "For 'call_architect' or 'call_engineer', the specific task to delegate."
+  ),
+});
+
 
 // ===============================================================================
 // THE "MASTER BRAIN" AGENT
@@ -50,26 +52,25 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
+    // REFINED PROMPT to work with the new, simpler schema.
     const prompt = `
       You are the Vibe Coder Project Manager, a world-class AI collaborator.
       Your job is to analyze the entire conversation history and decide on the
       single best next action to take.
 
-      These are your possible actions:
-      1.  'reply_to_user': Use this to ask clarifying questions, brainstorm,
-          greet the user, or present information.
-      2.  'call_architect': Use this ONLY when you have a clear, confirmed
-          task from the user that needs a technical plan.
-      3.  'call_engineer': Use this ONLY when a plan has been presented and the
-          user has clearly approved it.
+      Your possible actions are: "reply_to_user", "call_architect",
+      "call_engineer".
 
-      Analyze the conversation below. If the user's last message is a new,
-      ambiguous task, ASK A CLARIFYING QUESTION. Do not create a plan until
-      you are sure what the user wants. If the user has approved a plan,
-      call the engineer with the first step. If you just received a plan or
-      code, present it to the user.
+      - If the user's last message is ambiguous, a greeting, or a simple
+        question, choose "reply_to_user" and set 'text' to be your
+        natural language response.
+      - If the user has given a clear task and you need a plan, choose
+        "call_architect" and set 'task' to be the user's request.
+      - If the user has approved a plan, choose "call_engineer" and set
+        'task' to be the first step of that plan.
 
-      Respond with ONLY a valid JSON object matching the required action schema.
+      Analyze the conversation below and respond with ONLY a valid JSON
+      object matching the required schema.
 
       CONVERSATION HISTORY:
       ${JSON.stringify(history, null, 2)}
@@ -82,10 +83,9 @@ export const projectManagerFlow = ai.defineFlow(
       output: {
         schema: DecisionSchema,
       },
-      config: {temperature: 0.2},
+      config: {temperature: 0.1},
     });
 
-    // CRITICAL FIX: Check for a null output before returning.
     const decision = llmResponse.output;
     if (!decision) {
       throw new Error("The Project Manager brain failed to make a decision.");
