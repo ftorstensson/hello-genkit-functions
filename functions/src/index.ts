@@ -1,7 +1,8 @@
 /*
- * Vibe Coder AI Engine - v5.2 (Unified Brain - z.enum fix)
- * This version implements the expert-validated fix for the structured output
- * bug by refactoring the DecisionSchema to use z.enum instead of z.literal.
+ * Vibe Coder AI Engine - v6.0 (Structured History)
+ * This version implements the "Structured History" architecture.
+ * The MessageSchema now accepts structured objects, and the core prompt
+ * has been upgraded to reason over this richer conversational context.
  */
 
 import {genkit, z} from "genkit";
@@ -17,14 +18,15 @@ const ai = genkit({
 // DATA SCHEMAS
 // ===============================================================================
 
+// [REFACTORED] The content field is now z.any() to allow for structured
+// JSON objects from the assistant, in addition to simple strings from the user.
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
-  content: z.string(),
+  content: z.any(),
 });
 
 const HistorySchema = z.array(MessageSchema);
 
-// REFACTORED SCHEMA using z.enum, as recommended by the expert.
 const DecisionSchema = z.object({
   action: z.enum([
     "reply_to_user",
@@ -52,11 +54,17 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
-    // REFINED PROMPT to work with the new, simpler schema.
+    // [ENHANCED PROMPT] The prompt now teaches the AI how to parse the
+    // new, richer history, where an assistant's 'content' can be an object.
     const prompt = `
       You are the Vibe Coder Project Manager, a world-class AI collaborator.
       Your job is to analyze the entire conversation history and decide on the
       single best next action to take.
+
+      The user's 'content' will be a simple string.
+      The assistant's 'content' may be a JSON object containing a 'reply'
+      and/or a 'plan'. You must parse the full history to understand the
+      current state of the project.
 
       Your possible actions are: "reply_to_user", "call_architect",
       "call_engineer".
@@ -66,8 +74,9 @@ export const projectManagerFlow = ai.defineFlow(
         natural language response.
       - If the user has given a clear task and you need a plan, choose
         "call_architect" and set 'task' to be the user's request.
-      - If the user has approved a plan, choose "call_engineer" and set
-        'task' to be the first step of that plan.
+      - If you have just presented a plan (visible in the last assistant
+        message) and the user has approved it, choose "call_engineer" and
+        set 'task' to be the first step of that plan.
 
       Analyze the conversation below and respond with ONLY a valid JSON
       object matching the required schema.
