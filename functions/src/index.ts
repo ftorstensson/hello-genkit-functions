@@ -1,7 +1,8 @@
 /*
- * Vibe Coder AI Engine - v6.1 (Structured History - Bugfix)
- * This version corrects a typo in the vertexai import path and ensures
- * the file is correctly formatted to pass linter checks.
+ * Vibe Coder AI Engine - v7.0 (Architect Agent)
+ * This version introduces the specialist "Architect" agent.
+ * It defines the architectFlow and exports it as a callable function,
+ * resolving the 404 error from the Backend Executor.
  */
 
 import {genkit, z} from "genkit";
@@ -17,8 +18,6 @@ const ai = genkit({
 // DATA SCHEMAS
 // ===============================================================================
 
-// [REFACTORED] The content field is now z.any() to allow for structured
-// JSON objects from the assistant, in addition to simple strings from the user.
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.any(),
@@ -41,11 +40,20 @@ const DecisionSchema = z.object({
   ),
 });
 
+// [NEW] Define the output schema for our new Architect agent.
+const PlanSchema = z.object({
+    title: z.string().describe("A short, descriptive title for the overall plan."),
+    steps: z.array(z.string()).describe("A list of concrete steps to execute the plan."),
+});
+
 
 // ===============================================================================
-// THE "MASTER BRAIN" AGENT
+// AGENT DEFINITIONS
 // ===============================================================================
 
+// -------------------------------------------------------------------------------
+// 1. The "Master Brain" Agent
+// -------------------------------------------------------------------------------
 export const projectManagerFlow = ai.defineFlow(
   {
     name: "projectManagerFlow",
@@ -53,8 +61,6 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
-    // [ENHANCED PROMPT] The prompt now teaches the AI how to parse the
-    // new, richer history, where an assistant's 'content' can be an object.
     const prompt = `
       You are the Vibe Coder Project Manager, a world-class AI collaborator.
       Your job is to analyze the entire conversation history and decide on the
@@ -102,7 +108,51 @@ export const projectManagerFlow = ai.defineFlow(
   }
 );
 
+// -------------------------------------------------------------------------------
+// 2. [NEW] The "Architect" Specialist Agent
+// -------------------------------------------------------------------------------
+export const architectFlow = ai.defineFlow(
+    {
+        name: "architectFlow",
+        inputSchema: z.string(),
+        outputSchema: PlanSchema,
+    },
+    async (task) => {
+        const prompt = `
+            You are The Architect, a master of software design.
+            A user wants to build the following: "${task}".
+
+            Your job is to create a simple, step-by-step plan to build this.
+            The plan should have a title and a list of no more than 5 steps.
+            Respond with ONLY a valid JSON object matching the required schema.
+        `;
+
+        const llmResponse = await ai.generate({
+            prompt,
+            model: gemini15Flash,
+            output: { schema: PlanSchema },
+        });
+
+        const plan = llmResponse.output;
+        if (!plan) {
+            throw new Error("The Architect failed to generate a plan.");
+        }
+        return plan;
+    }
+);
+
+
+// ===============================================================================
+// CLOUD FUNCTION EXPORTS
+// ===============================================================================
+
 export const projectManager = onCallGenkit(
   {region: "australia-southeast1"},
   projectManagerFlow
+);
+
+// [NEW] Export the architect flow as a callable cloud function.
+export const architect = onCallGenkit(
+  {region: "australia-southeast1"},
+  architectFlow
 );
