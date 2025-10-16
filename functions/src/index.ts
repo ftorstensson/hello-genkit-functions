@@ -1,8 +1,8 @@
 /*
- * Vibe Coder AI Engine - v7.0 (Architect Agent)
- * This version introduces the specialist "Architect" agent.
- * It defines the architectFlow and exports it as a callable function,
- * resolving the 404 error from the Backend Executor.
+ * Vibe Coder AI Engine - v8.0 (Smarter Brain)
+ * This version implements the "Smarter Brain" mission.
+ * The projectManagerFlow prompt has been completely redesigned to be a
+ * conversational, brainstorming partner, aligning with the project vision.
  */
 
 import {genkit, z} from "genkit";
@@ -40,10 +40,9 @@ const DecisionSchema = z.object({
   ),
 });
 
-// [NEW] Define the output schema for our new Architect agent.
 const PlanSchema = z.object({
-    title: z.string().describe("A short, descriptive title for the overall plan."),
-    steps: z.array(z.string()).describe("A list of concrete steps to execute the plan."),
+  title: z.string().describe("A short, descriptive title for the overall plan."),
+  steps: z.array(z.string()).describe("A list of concrete steps to execute the plan."),
 });
 
 
@@ -61,30 +60,28 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
+    // [UPGRADED PROMPT - THE "SMARTER BRAIN"]
     const prompt = `
       You are the Vibe Coder Project Manager, a world-class AI collaborator.
-      Your job is to analyze the entire conversation history and decide on the
-      single best next action to take.
+      Your role is to be a brainstorming partner for the user, guiding them
+      from a vague idea to a concrete plan.
 
-      The user's 'content' will be a simple string.
-      The assistant's 'content' may be a JSON object containing a 'reply'
-      and/or a 'plan'. You must parse the full history to understand the
-      current state of the project.
+      ## Your Core Directives:
+      1.  **Be a Conversational Partner:** If the user's request is ambiguous,
+          ask clarifying, open-ended questions. Your first job is to understand.
+          Use the "reply_to_user" action for all conversational turns.
+      2.  **Synthesize and Confirm:** After you've discussed the idea, summarize
+          your understanding and ask the user for confirmation. For example: "Okay,
+          so it sounds like we're building a to-do list app that also has a social
+          sharing feature. Is that correct?"
+      3.  **Delegate Only When Ready:** DO NOT use "call_architect" until you
+          have a clear, user-confirmed goal. The user's confirmation is your
+          explicit signal to proceed with creating a formal plan.
+      4.  **Manage the Workflow:** If the last message shows you have presented a
+          plan and the user approves it, your next action is to "call_engineer"
+          with the first task from that plan.
 
-      Your possible actions are: "reply_to_user", "call_architect",
-      "call_engineer".
-
-      - If the user's last message is ambiguous, a greeting, or a simple
-        question, choose "reply_to_user" and set 'text' to be your
-        natural language response.
-      - If the user has given a clear task and you need a plan, choose
-        "call_architect" and set 'task' to be the user's request.
-      - If you have just presented a plan (visible in the last assistant
-        message) and the user has approved it, choose "call_engineer" and
-        set 'task' to be the first step of that plan.
-
-      Analyze the conversation below and respond with ONLY a valid JSON
-      object matching the required schema.
+      ## Analyze the conversation below and decide your next action.
 
       CONVERSATION HISTORY:
       ${JSON.stringify(history, null, 2)}
@@ -97,7 +94,7 @@ export const projectManagerFlow = ai.defineFlow(
       output: {
         schema: DecisionSchema,
       },
-      config: {temperature: 0.1},
+      config: {temperature: 0.3}, // Increased temp slightly for more creative conversation
     });
 
     const decision = llmResponse.output;
@@ -109,16 +106,16 @@ export const projectManagerFlow = ai.defineFlow(
 );
 
 // -------------------------------------------------------------------------------
-// 2. [NEW] The "Architect" Specialist Agent
+// 2. The "Architect" Specialist Agent
 // -------------------------------------------------------------------------------
 export const architectFlow = ai.defineFlow(
-    {
-        name: "architectFlow",
-        inputSchema: z.string(),
-        outputSchema: PlanSchema,
-    },
-    async (task) => {
-        const prompt = `
+  {
+    name: "architectFlow",
+    inputSchema: z.string(),
+    outputSchema: PlanSchema,
+  },
+  async (task) => {
+    const prompt = `
             You are The Architect, a master of software design.
             A user wants to build the following: "${task}".
 
@@ -127,18 +124,18 @@ export const architectFlow = ai.defineFlow(
             Respond with ONLY a valid JSON object matching the required schema.
         `;
 
-        const llmResponse = await ai.generate({
-            prompt,
-            model: gemini15Flash,
-            output: { schema: PlanSchema },
-        });
+    const llmResponse = await ai.generate({
+      prompt,
+      model: gemini15Flash,
+      output: {schema: PlanSchema},
+    });
 
-        const plan = llmResponse.output;
-        if (!plan) {
-            throw new Error("The Architect failed to generate a plan.");
-        }
-        return plan;
+    const plan = llmResponse.output;
+    if (!plan) {
+      throw new Error("The Architect failed to generate a plan.");
     }
+    return plan;
+  }
 );
 
 
@@ -151,7 +148,6 @@ export const projectManager = onCallGenkit(
   projectManagerFlow
 );
 
-// [NEW] Export the architect flow as a callable cloud function.
 export const architect = onCallGenkit(
   {region: "australia-southeast1"},
   architectFlow
