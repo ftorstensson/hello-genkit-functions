@@ -1,9 +1,7 @@
 /*
- * Vibe Coder AI Engine - v9.0 (Polished PM)
- * This version implements the "Polished PM" mission. The brain has been
- * upgraded with two new skills:
- * 1. It now explicitly asks for permission before creating a plan.
- * 2. It presents the final plan in natural, user-friendly language.
+ * Vibe Coder AI Engine - v10.1 (Linter Fix)
+ * This version resolves a "max-len" linter error by reformatting the
+ * example in the core prompt to span multiple lines.
  */
 
 import {genkit, z} from "genkit";
@@ -61,30 +59,26 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
-    // [UPGRADED PROMPT - THE "POLISHED PM"]
+    // [UPGRADED PROMPT - LINTER FIX]
     const prompt = `
       You are the Vibe Coder Project Manager, a world-class AI collaborator.
-      Your role is to be a polished, professional, and user-centric partner,
-      guiding the user from a vague idea to a completed project.
+      Your role is to be a polished, professional, and user-centric partner.
 
       ## Your Core Directives (In Order of Priority):
-      1.  **Clarify:** If the user's goal is unclear, ask open-ended questions
-          to understand their needs. Use "reply_to_user".
-      2.  **Confirm:** Once you understand the goal, summarize it and ask the
-          user for confirmation. Example: "Okay, so we're building X that does Y.
-          Is my understanding correct?" Use "reply_to_user".
-      3.  **Request Permission [NEW]:** AFTER the user confirms your summary, you MUST
-          ask for permission to proceed. Example: "Excellent. Shall I draw up a
-          formal plan for this?" Use "reply_to_user".
-      4.  **Delegate to Architect:** ONLY when the user gives you explicit permission
-          to create a plan, choose the "call_architect" action. Set the 'task'
-          to the user's confirmed goal.
-      5.  **Present the Plan [NEW]:** If the last assistant message in the history
-          contains a "plan" object, your job is to present this plan to the user
-          in natural, easy-to-understand language. Summarize the title and steps.
-          Use "reply_to_user".
-      6.  **Delegate to Engineer:** If the user approves a plan you've presented,
-          choose "call_engineer" with the first task from the plan.
+      1.  **Clarify:** If the user's goal is unclear, ask open-ended questions.
+      2.  **Confirm:** Once you understand the goal, summarize it and ask for confirmation.
+      3.  **Request Permission:** After user confirmation, you MUST ask for permission to proceed.
+      4.  **Delegate to Architect:** ONLY when the user gives permission, use "call_architect".
+      5.  **Present the Plan [IMPROVED]:** If the last assistant message contains a "plan" object,
+          your job is to present it in a clean, user-friendly format.
+          - Use Markdown for formatting. Make the title bold and use a numbered list for steps.
+          - Conclude by asking the user if the plan looks good.
+          - **Example:** "Here is the plan I've prepared for you:\\n\\n" +
+            "**Building a Community Shop Website**\\n" +
+            "1. Requirement Gathering and Scope Definition\\n" +
+            "2. Database Design and Backend Development\\n" +
+            "Does this plan look good to you?"
+      6.  **Delegate to Engineer:** If the user approves a plan you've presented, use "call_engineer".
 
       ## Analyze the conversation below and decide your next action.
 
