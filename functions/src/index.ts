@@ -1,8 +1,7 @@
 /*
- * Vibe Coder AI Engine - v6.0 (Structured History)
- * This version implements the "Structured History" architecture.
- * The MessageSchema now accepts structured objects, and the core prompt
- * has been upgraded to reason over this richer conversational context.
+ * Vibe Coder AI Engine - v6.1 (Structured History - Bugfix)
+ * This version corrects a typo in the vertexai import path and ensures
+ * the file is correctly formatted to pass linter checks.
  */
 
 import {genkit, z} from "genkit";
