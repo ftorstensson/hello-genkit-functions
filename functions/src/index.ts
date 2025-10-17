@@ -1,20 +1,29 @@
 /*
- * Vibe Coder AI Engine - v10.1 (Linter Fix)
- * This version resolves a "max-len" linter error by reformatting the
- * example in the core prompt to span multiple lines.
+ * Vibe Coder AI Engine - v11.0 (Dynamic Foundation)
+ * This version implements the Firestore-driven dynamic agent architecture.
+ * The projectManagerFlow now loads its prompt, model, and configuration
+ * directly from the database, enabling runtime updates without redeployment.
  */
 
 import {genkit, z} from "genkit";
 import {vertexAI, gemini15Flash} from "@genkit-ai/vertexai";
 import {onCallGenkit} from "firebase-functions/v2/https";
 
+// [NEW] Import Firebase Admin SDK to connect to Firestore
+import * as admin from "firebase-admin";
+
+// Initialize Firebase Admin
+admin.initializeApp();
+const db = admin.firestore();
+
 // Initialize Genkit
 const ai = genkit({
   plugins: [vertexAI({location: "australia-southeast1"})],
+  // We will add other model providers (e.g., OpenAI) here in a future mission.
 });
 
 // ===============================================================================
-// DATA SCHEMAS
+// DATA SCHEMAS (Unchanged from previous version)
 // ===============================================================================
 
 const MessageSchema = z.object({
@@ -50,7 +59,7 @@ const PlanSchema = z.object({
 // ===============================================================================
 
 // -------------------------------------------------------------------------------
-// 1. The "Master Brain" Agent
+// 1. The "Master Brain" Agent - NOW DYNAMIC
 // -------------------------------------------------------------------------------
 export const projectManagerFlow = ai.defineFlow(
   {
@@ -59,26 +68,31 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
-    // [UPGRADED PROMPT - LINTER FIX]
-    const prompt = `
-      You are the Vibe Coder Project Manager, a world-class AI collaborator.
-      Your role is to be a polished, professional, and user-centric partner.
+    console.log("Fetching dynamic agent configuration...");
 
-      ## Your Core Directives (In Order of Priority):
-      1.  **Clarify:** If the user's goal is unclear, ask open-ended questions.
-      2.  **Confirm:** Once you understand the goal, summarize it and ask for confirmation.
-      3.  **Request Permission:** After user confirmation, you MUST ask for permission to proceed.
-      4.  **Delegate to Architect:** ONLY when the user gives permission, use "call_architect".
-      5.  **Present the Plan [IMPROVED]:** If the last assistant message contains a "plan" object,
-          your job is to present it in a clean, user-friendly format.
-          - Use Markdown for formatting. Make the title bold and use a numbered list for steps.
-          - Conclude by asking the user if the plan looks good.
-          - **Example:** "Here is the plan I've prepared for you:\\n\\n" +
-            "**Building a Community Shop Website**\\n" +
-            "1. Requirement Gathering and Scope Definition\\n" +
-            "2. Database Design and Backend Development\\n" +
-            "Does this plan look good to you?"
-      6.  **Delegate to Engineer:** If the user approves a plan you've presented, use "call_engineer".
+    // [REFACTORED] Fetch agent and model config from Firestore
+    const agentRef = db.collection("agents").doc("project-manager");
+    const agentDoc = await agentRef.get();
+    if (!agentDoc.exists) {
+      throw new Error("Agent 'project-manager' not found in Firestore.");
+    }
+    const agentConfig = agentDoc.data()!;
+
+    const modelRef = db.collection("models").doc(agentConfig.modelId);
+    const modelDoc = await modelRef.get();
+    if (!modelDoc.exists) {
+      throw new Error(`Model '${agentConfig.modelId}' not found in Firestore.`);
+    }
+    const modelConfig = modelDoc.data()!;
+
+    // Currently, we only support Google models. We will add a switch for OpenAI later.
+    if (modelConfig.provider !== "google") {
+      throw new Error(`Unsupported model provider: ${modelConfig.provider}`);
+    }
+
+    console.log(`Using model: ${agentConfig.modelId} with temp: ${modelConfig.config.temperature}`);
+
+    const prompt = `${agentConfig.prompt}
 
       ## Analyze the conversation below and decide your next action.
 
@@ -89,11 +103,11 @@ export const projectManagerFlow = ai.defineFlow(
 
     const llmResponse = await ai.generate({
       prompt,
-      model: gemini15Flash,
+      model: gemini15Flash, // Note: We will make the model itself dynamic in the next step
       output: {
         schema: DecisionSchema,
       },
-      config: {temperature: 0.3},
+      config: {temperature: modelConfig.config.temperature},
     });
 
     const decision = llmResponse.output;
@@ -104,8 +118,7 @@ export const projectManagerFlow = ai.defineFlow(
   }
 );
 
-// -------------------------------------------------------------------------------
-// 2. The "Architect" Specialist Agent
+// (The Architect flow is temporarily unchanged, we will make it dynamic next)
 // -------------------------------------------------------------------------------
 export const architectFlow = ai.defineFlow(
   {
@@ -117,9 +130,7 @@ export const architectFlow = ai.defineFlow(
     const prompt = `
             You are The Architect, a master of software design.
             A user wants to build the following: "${task}".
-
-            Your job is to create a simple, step-by-step plan to build this.
-            The plan should have a title and a list of no more than 5 steps.
+            Your job is to create a simple, step-by-step plan.
             Respond with ONLY a valid JSON object matching the required schema.
         `;
 
