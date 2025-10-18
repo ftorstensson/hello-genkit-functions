@@ -1,29 +1,23 @@
 /*
- * Vibe Coder AI Engine - v11.0 (Dynamic Foundation)
- * This version implements the Firestore-driven dynamic agent architecture.
- * The projectManagerFlow now loads its prompt, model, and configuration
- * directly from the database, enabling runtime updates without redeployment.
+ * Vibe Coder AI Engine - v12.1 (Linter Fix)
+ * This version resolves a 'require-jsdoc' linter error by adding the
+ * mandatory documentation block to the new dynamic flow runner.
  */
 
 import {genkit, z} from "genkit";
 import {vertexAI, gemini15Flash} from "@genkit-ai/vertexai";
 import {onCallGenkit} from "firebase-functions/v2/https";
-
-// [NEW] Import Firebase Admin SDK to connect to Firestore
 import * as admin from "firebase-admin";
 
-// Initialize Firebase Admin
+// Initialize Firebase & Genkit
 admin.initializeApp();
 const db = admin.firestore();
-
-// Initialize Genkit
 const ai = genkit({
   plugins: [vertexAI({location: "australia-southeast1"})],
-  // We will add other model providers (e.g., OpenAI) here in a future mission.
 });
 
 // ===============================================================================
-// DATA SCHEMAS (Unchanged from previous version)
+// DATA SCHEMAS (Unchanged)
 // ===============================================================================
 
 const MessageSchema = z.object({
@@ -39,28 +33,76 @@ const DecisionSchema = z.object({
     "call_architect",
     "call_engineer",
   ]),
-  text: z.string().describe(
-    "For 'reply_to_user', the text to say. For other actions, a brief " +
-    "summary of the action being taken."
-  ),
-  task: z.string().optional().describe(
-    "For 'call_architect' or 'call_engineer', the specific task to delegate."
-  ),
+  text: z.string(),
+  task: z.string().optional(),
 });
 
 const PlanSchema = z.object({
-  title: z.string().describe("A short, descriptive title for the overall plan."),
-  steps: z.array(z.string()).describe("A list of concrete steps to execute the plan."),
+  title: z.string(),
+  steps: z.array(z.string()),
 });
 
 
 // ===============================================================================
-// AGENT DEFINITIONS
+// The Dynamic Flow Runner
 // ===============================================================================
 
-// -------------------------------------------------------------------------------
-// 1. The "Master Brain" Agent - NOW DYNAMIC
-// -------------------------------------------------------------------------------
+/**
+ * A reusable helper function to run a Genkit flow based on a dynamic
+ * agent configuration fetched from Firestore.
+ * @param {string} agentId The document ID of the agent in the 'agents' collection.
+ * @param {any} input The input data for the flow (e.g., history array or task string).
+ * @param {any} outputSchema The Zod schema for the flow's output.
+ * @return {Promise<any>} A promise that resolves with the validated output from the LLM.
+ */
+async function runDynamicFlow(agentId: string, input: any, outputSchema: any) {
+  console.log(`[${agentId}] Starting dynamic flow...`);
+
+  const agentRef = db.collection("agents").doc(agentId);
+  const agentDoc = await agentRef.get();
+  if (!agentDoc.exists) {
+    throw new Error(`Agent '${agentId}' not found in Firestore.`);
+  }
+  const agentConfig = agentDoc.data()!;
+
+  const modelRef = db.collection("models").doc(agentConfig.modelId);
+  const modelDoc = await modelRef.get();
+  if (!modelDoc.exists) {
+    throw new Error(`Model '${agentConfig.modelId}' not found in Firestore.`);
+  }
+  const modelConfig = modelDoc.data()!;
+
+  if (modelConfig.provider !== "google") {
+    throw new Error(`Unsupported provider: ${modelConfig.provider}`);
+  }
+
+  // Replace a placeholder in the prompt with the actual input
+  const prompt = agentConfig.prompt.replace("{task}", JSON.stringify(input, null, 2));
+
+  const llmResponse = await ai.generate({
+    prompt: `${prompt}
+
+      CONVERSATION HISTORY (if applicable):
+      ${JSON.stringify(input, null, 2)}
+      `,
+    model: gemini15Flash, // This will be made dynamic in a future step
+    output: {schema: outputSchema},
+    config: {temperature: modelConfig.config.temperature},
+  });
+
+  const output = llmResponse.output;
+  if (!output) {
+    throw new Error(`[${agentId}] The agent failed to generate a valid output.`);
+  }
+  console.log(`[${agentId}] Flow completed successfully.`);
+  return output;
+}
+
+
+// ===============================================================================
+// AGENT FLOWS (Now simple wrappers around the dynamic runner)
+// ===============================================================================
+
 export const projectManagerFlow = ai.defineFlow(
   {
     name: "projectManagerFlow",
@@ -68,58 +110,10 @@ export const projectManagerFlow = ai.defineFlow(
     outputSchema: DecisionSchema,
   },
   async (history) => {
-    console.log("Fetching dynamic agent configuration...");
-
-    // [REFACTORED] Fetch agent and model config from Firestore
-    const agentRef = db.collection("agents").doc("project-manager");
-    const agentDoc = await agentRef.get();
-    if (!agentDoc.exists) {
-      throw new Error("Agent 'project-manager' not found in Firestore.");
-    }
-    const agentConfig = agentDoc.data()!;
-
-    const modelRef = db.collection("models").doc(agentConfig.modelId);
-    const modelDoc = await modelRef.get();
-    if (!modelDoc.exists) {
-      throw new Error(`Model '${agentConfig.modelId}' not found in Firestore.`);
-    }
-    const modelConfig = modelDoc.data()!;
-
-    // Currently, we only support Google models. We will add a switch for OpenAI later.
-    if (modelConfig.provider !== "google") {
-      throw new Error(`Unsupported model provider: ${modelConfig.provider}`);
-    }
-
-    console.log(`Using model: ${agentConfig.modelId} with temp: ${modelConfig.config.temperature}`);
-
-    const prompt = `${agentConfig.prompt}
-
-      ## Analyze the conversation below and decide your next action.
-
-      CONVERSATION HISTORY:
-      ${JSON.stringify(history, null, 2)}
-
-      YOUR NEXT ACTION:`;
-
-    const llmResponse = await ai.generate({
-      prompt,
-      model: gemini15Flash, // Note: We will make the model itself dynamic in the next step
-      output: {
-        schema: DecisionSchema,
-      },
-      config: {temperature: modelConfig.config.temperature},
-    });
-
-    const decision = llmResponse.output;
-    if (!decision) {
-      throw new Error("The Project Manager brain failed to make a decision.");
-    }
-    return decision;
+    return runDynamicFlow("project-manager", history, DecisionSchema);
   }
 );
 
-// (The Architect flow is temporarily unchanged, we will make it dynamic next)
-// -------------------------------------------------------------------------------
 export const architectFlow = ai.defineFlow(
   {
     name: "architectFlow",
@@ -127,30 +121,13 @@ export const architectFlow = ai.defineFlow(
     outputSchema: PlanSchema,
   },
   async (task) => {
-    const prompt = `
-            You are The Architect, a master of software design.
-            A user wants to build the following: "${task}".
-            Your job is to create a simple, step-by-step plan.
-            Respond with ONLY a valid JSON object matching the required schema.
-        `;
-
-    const llmResponse = await ai.generate({
-      prompt,
-      model: gemini15Flash,
-      output: {schema: PlanSchema},
-    });
-
-    const plan = llmResponse.output;
-    if (!plan) {
-      throw new Error("The Architect failed to generate a plan.");
-    }
-    return plan;
+    return runDynamicFlow("architect", task, PlanSchema);
   }
 );
 
 
 // ===============================================================================
-// CLOUD FUNCTION EXPORTS
+// CLOUD FUNCTION EXPORTS (Unchanged)
 // ===============================================================================
 
 export const projectManager = onCallGenkit(
