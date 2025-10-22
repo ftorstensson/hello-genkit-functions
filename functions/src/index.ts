@@ -1,5 +1,5 @@
 /*
- * Vibe Coder AI Engine - v13.8 (Definitive Ground Truth)
+ * Vibe Coder AI Engine - v13.8 (Definitive Ground Truth!)
  *
  * This is the definitive diagnostic version. It removes all non-compiling code.
  * Its ONLY purpose is to log the full structure of the 'llmResponse' object
